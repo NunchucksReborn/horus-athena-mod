@@ -25,6 +25,8 @@ __pycache__/
 # PyInstaller build artifacts
 build/
 dist/
+Athena.exe
+*.exe
 
 # Logs and screenshots
 *.png
