@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+pywebview
+python-multipart
+pydantic
+requests
+playwright
+google-generativeai
+openai
+pyinstaller
+greenlet
