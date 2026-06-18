@@ -28,6 +28,10 @@ dist/
 Athena.exe
 *.exe
 
+# Release zip packages
+*.zip
+Athena-v*-release.zip
+
 # Logs and screenshots
 *.png
 *.html
