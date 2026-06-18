@@ -72,21 +72,23 @@ def get_projects():
 
 @app.get("/api/projects/scan")
 def scan_projects():
-    # To fetch from actual WorkAI, we need credentials from config.json or .env
-    # For now, let's load from .env
-    env_path = os.path.join(BASE_DIR, ".env")
-    username = ""
-    password = ""
-    if os.path.exists(env_path):
-        with open(env_path, "r", encoding="utf-8") as f:
-            for line in f:
-                if line.startswith("WORKAI_USERNAME="):
-                    username = line.split("=", 1)[1].strip()
-                elif line.startswith("WORKAI_PASSWORD="):
-                    password = line.split("=", 1)[1].strip()
-    
+    # Lay credentials tu config.json truoc (da setup qua UI), fallback .env
+    config = load_config()
+    username = config.get("workai_user", "")
+    password = config.get("workai_pass", "")
+
     if not username or not password:
-        raise HTTPException(status_code=400, detail="Thiếu WorkAI Username/Password trong .env hoặc Setup")
+        env_path = os.path.join(BASE_DIR, ".env")
+        if os.path.exists(env_path):
+            with open(env_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    if line.startswith("WORKAI_USERNAME="):
+                        username = line.split("=", 1)[1].strip()
+                    elif line.startswith("WORKAI_PASSWORD="):
+                        password = line.split("=", 1)[1].strip()
+
+    if not username or not password:
+        raise HTTPException(status_code=400, detail="Thiếu WorkAI Username/Password. Vui lòng cài đặt trước.")
 
     from workai_api import WorkAIAPI
     try:
@@ -901,6 +903,8 @@ def save_setup(data: dict):
                     
     if "workai_pass" in data:
         env_data["WORKAI_PASSWORD"] = data["workai_pass"]
+    if "workai_user" in data:
+        env_data["WORKAI_USERNAME"] = data["workai_user"]
         
     # Clear credentials for inactive platforms
     active_types = {p.get("type") for p in platforms if p.get("type")}

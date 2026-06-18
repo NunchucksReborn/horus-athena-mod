@@ -303,8 +303,22 @@ def main():
     env = load_env()
     username = env.get("WORKAI_USERNAME")
     password = env.get("WORKAI_PASSWORD")
+    # Fallback: doc tu config.json neu .env thieu
     if not username or not password:
-        print("[ERROR] Missing credentials in .env")
+        base_dir = os.path.dirname(os.path.abspath(__file__)) if not getattr(sys, 'frozen', False) else os.path.dirname(sys.executable)
+        config_file = os.path.join(base_dir, "config.json")
+        if os.path.exists(config_file):
+            try:
+                with open(config_file, "r", encoding="utf-8") as cf:
+                    cfg = json.load(cf)
+                if not username:
+                    username = cfg.get("workai_user", "")
+                if not password:
+                    password = cfg.get("workai_pass", "")
+            except Exception as e:
+                print(f"[WARNING] Failed to load config.json: {e}")
+    if not username or not password:
+        print("[ERROR] Missing credentials in .env and config.json")
         update_status("error", 0, total, "Thiếu thông tin tài khoản WorkAI trong cấu hình.")
         sys.exit(1)
 

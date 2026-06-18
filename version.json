@@ -1,5 +1,5 @@
 {
-  "version": "1.2.0",
+  "version": "1.2.1",
   "released_at": "2026-06-19",
-  "changelog": "v1.2.0: Bo tinh nang Tong hop (Rocket.Chat/Git/Email sync) va Tạo việc tu dong. Thay bang tinh nang '2. Nhập việc thủ công' - popup cho phep nhap cong viec tay, chon ngay rieng biet cho moi viec, AI tu tao tieu de chuan Rule B (>= 50 ky tu). Tab 'Nội dung đã tạo' hien thi ket qua."
+  "changelog": "v1.2.1: Sua loi dang nhap WorkAI that bai (HTTP 500) khi 'Lam moi Du an WorkAI' va 'Nhap viec'. Nguyen nhan: /api/setup khong ghi WORKAI_USERNAME vao .env, cac endpoint chi doc .env. Fix: dong bo WORKAI_USERNAME vao .env khi setup, them fallback config.json cho scan_projects, submitter, preview_helper."
 }
