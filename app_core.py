@@ -1018,27 +1018,32 @@ def load_config():
 def get_config():
     return load_config()
 
-@app.post("/api/run/taoviec")
-def run_taoviec():
+class ManualTaskItem(BaseModel):
+    content: str
+    date: str
+    project_code: str = ""
+
+class ManualTaskRequest(BaseModel):
+    tasks: list
+
+@app.post("/api/manual_tasks/create")
+def create_manual_tasks(req: ManualTaskRequest):
     config = load_config()
     provider = config.get("ai_provider", "gemini")
     api_key = config.get("ai_key", "")
-    
-    raw_data = get_current_day_tasks()
-        
-    tasks_to_process = [t for t in raw_data if t.get("status") != "hide"]
-            
-    if not tasks_to_process:
-        return {"status": "success", "content": "Không có task nào để xử lý."}
-        
-    from ai_processor import generate_tasks
+
+    manual_inputs = req.tasks
+    if not manual_inputs:
+        raise HTTPException(status_code=400, detail="Không có công việc nào để tạo.")
+
+    from ai_processor import generate_manual_tasks
     try:
-        markdown_content = generate_tasks(tasks_to_process, provider, api_key)
-        
-        # Save to memorytask.md
+        markdown_content = generate_manual_tasks(manual_inputs, provider, api_key)
+
+        # Save to memorytask.md (overwrite - manual entry replaces previous batch)
         with open(os.path.join(BASE_DIR, "memorytask.md"), "w", encoding="utf-8") as f:
             f.write(markdown_content)
-            
+
         return {"status": "success", "content": markdown_content}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -1108,11 +1113,14 @@ def run_nhapviec():
                     current_task["status"] = "Done"
                     current_task["sprint"] = "latest"
                     from datetime import datetime
-                    current_task["date"] = datetime.now().strftime("%Y-%m-%d")
+                    if "date" not in current_task:
+                        current_task["date"] = datetime.now().strftime("%Y-%m-%d")
                     parsed_tasks.append(current_task)
                 current_task = {}
             elif line.startswith("- **Project**:"):
                 current_task["project"] = line.split(":", 1)[1].strip()
+            elif line.startswith("- **Date**:"):
+                current_task["date"] = line.split(":", 1)[1].strip()
             elif line.startswith("- **Title**:"):
                 current_task["title"] = line.split(":", 1)[1].strip()
                     
@@ -1120,7 +1128,8 @@ def run_nhapviec():
             current_task["status"] = "Done"
             current_task["sprint"] = "latest"
             from datetime import datetime
-            current_task["date"] = datetime.now().strftime("%Y-%m-%d")
+            if "date" not in current_task:
+                current_task["date"] = datetime.now().strftime("%Y-%m-%d")
             parsed_tasks.append(current_task)
             
         with open(os.path.join(BASE_DIR, "tasks.json"), "w", encoding="utf-8") as f:
@@ -1420,7 +1429,8 @@ def parse_memorytask_markdown(content: str):
                 tasks.append(current_task)
             current_task = {
                 "project": "",
-                "platform": "rocket", # default
+                "platform": "rocket",
+                "date": "",
                 "title": "",
                 "raw_lines": [line]
             }
@@ -1430,6 +1440,8 @@ def parse_memorytask_markdown(content: str):
                 current_task["project"] = stripped.split(":", 1)[1].strip()
             elif stripped.startswith("- **Platform**:"):
                 current_task["platform"] = stripped.split(":", 1)[1].strip().lower()
+            elif stripped.startswith("- **Date**:"):
+                current_task["date"] = stripped.split(":", 1)[1].strip()
             elif stripped.startswith("- **Title**:"):
                 current_task["title"] = stripped.split(":", 1)[1].strip()
         else:
@@ -1457,7 +1469,9 @@ def rebuild_memorytask_markdown(header_lines, tasks):
         if not task_header_written:
             content += f"## Task {idx + 1}\n"
             content += f"- **Project**: {task.get('project', '')}\n"
-            content += f"- **Platform**: {task.get('platform', 'rocket')}\n"
+            content += f"- **Platform**: {task.get('platform', 'manual')}\n"
+            if task.get('date'):
+                content += f"- **Date**: {task.get('date')}\n"
             content += f"- **Title**: {task.get('title', '')}\n"
         content += "\n"
     return content.strip() + "\n"
@@ -1543,181 +1557,7 @@ def ai_chat(req: ChatRequest):
             return {"reply": explanation}
             
         elif req.active_tab == "tab-raw":
-            file_path = os.path.join(BASE_DIR, "saved_raw_tasks.json")
-            if not os.path.exists(file_path):
-                return {"reply": "Chưa có file saved_raw_tasks.json để sửa. Hãy Tổng hợp trước."}
-            all_tasks = get_current_day_tasks()
-            
-            # Separate visible tasks (active & match filter) vs other tasks (hidden or other platforms)
-            raw_filter = req.raw_filter.lower()
-            visible_tasks = []
-            other_tasks = []
-            for t in all_tasks:
-                if t.get("status") == "hide":
-                    other_tasks.append(t)
-                else:
-                    platform = get_raw_task_platform(t).lower()
-                    if raw_filter == "all" or platform == raw_filter:
-                        visible_tasks.append(t)
-                    else:
-                        other_tasks.append(t)
-                        
-            if not visible_tasks:
-                return {"reply": "Không tìm thấy công việc thô nào hiển thị khớp với bộ lọc để gửi cho AI."}
-                
-            # Create ID mapping to prevent LLM confusion on IDs like task_..._10
-            # Map simple IDs (str index) <-> original task IDs
-            id_map_to_orig = {}
-            id_map_to_simple = {}
-            for idx, t in enumerate(visible_tasks):
-                simple_id = str(idx + 1)
-                orig_id = t["id"]
-                id_map_to_orig[simple_id] = orig_id
-                id_map_to_simple[orig_id] = simple_id
-                t["id"] = simple_id # Temporarily set simple ID
-                
-            # Send only visible tasks with simple sequential IDs
-            visible_content_str = json.dumps(visible_tasks, ensure_ascii=False, indent=2)
-            
-            # Restore original IDs in visible_tasks array in Python memory immediately
-            for idx, t in enumerate(visible_tasks):
-                t["id"] = id_map_to_orig[str(idx + 1)]
-                
-            new_content = edit_raw_tasks_with_ai(visible_content_str, req.message, provider, api_key)
-            
-            # Thử parse JSON
-            try:
-                parsed = json.loads(new_content)
-            except json.JSONDecodeError:
-                # Thử sửa chữa JSON bị cắt ngắn (truncated)
-                parsed = try_repair_json(new_content)
-                if parsed is None:
-                    print(f"Lỗi AI trả về JSON không hợp lệ. Nội dung: {new_content[:500]}...")
-                    return {"reply": "Lỗi: AI trả về định dạng dữ liệu không hợp lệ. Vui lòng thử lại với yêu cầu rõ ràng hơn."}
-            
-            # Xử lý wrapper JSON
-            explanation = "Đã cập nhật xong danh sách ở Tab 1."
-            
-            import time
-            now_ms = int(time.time() * 1000)
-            
-            if isinstance(parsed, dict):
-                explanation = parsed.get("explanation", explanation)
-                mode = parsed.get("mode", "full")
-                
-                if mode == "patch" or "new_tasks" in parsed:
-                    # CHẾ ĐỘ 2: Patch mode
-                    # Convert simple hide_ids back to original IDs
-                    hide_simple_ids = parsed.get("hide_ids", [])
-                    hide_ids = [id_map_to_orig[str(sid)] for sid in hide_simple_ids if str(sid) in id_map_to_orig]
-                    
-                    # Hide selected visible tasks
-                    for t in visible_tasks:
-                        if t.get("id") in hide_ids:
-                            t["status"] = "hide"
-                            
-                    # Add new tasks
-                    new_tasks = parsed.get("new_tasks", [])
-                    for i, nt in enumerate(new_tasks):
-                        nt["id"] = f"task_{now_ms}_{i}"
-                        nt["status"] = "active"
-                        visible_tasks.append(nt)
-                        
-                    # Save visible + other tasks
-                    final_tasks = visible_tasks + other_tasks
-                    with open(file_path, "w", encoding="utf-8") as f:
-                        json.dump(final_tasks, f, ensure_ascii=False, indent=2)
-                    return {"reply": explanation}
-                
-                else:
-                    # CHẾ ĐỘ 1: Full tasks mode inside wrapper dict
-                    updated_tasks = parsed.get("updated_tasks", [])
-                    if not updated_tasks and "mode" in parsed:
-                        updated_tasks = parsed.get("tasks", [])
-                        
-                    # Map simple IDs of updated_tasks back to original IDs
-                    for ut in updated_tasks:
-                        simple_id = str(ut.get("id"))
-                        if simple_id in id_map_to_orig:
-                            ut["id"] = id_map_to_orig[simple_id]
-                            
-                    # Merge updated tasks by ID mapping
-                    updated_by_id = {t["id"]: t for t in updated_tasks if "id" in t}
-                    visible_ids = {t["id"] for t in visible_tasks if "id" in t}
-                    
-                    final_tasks = []
-                    new_added_tasks = []
-                    
-                    # Handle new tasks added in updated_tasks that don't have original IDs
-                    for ut in updated_tasks:
-                        ut_id = ut.get("id")
-                        if not ut_id or ut_id not in visible_ids:
-                            if not ut_id:
-                                ut["id"] = f"task_{now_ms}_{len(new_added_tasks)}"
-                            ut["status"] = "active"
-                            new_added_tasks.append(ut)
-                            
-                    for t in all_tasks:
-                        t_id = t.get("id")
-                        if t_id in updated_by_id:
-                            final_tasks.append(updated_by_id[t_id])
-                        elif t_id in visible_ids:
-                            # This visible task was deleted by AI in full mode
-                            t["status"] = "hide"
-                            final_tasks.append(t)
-                        else:
-                            # Keep non-visible/hidden tasks as is
-                            final_tasks.append(t)
-                            
-                    final_tasks.extend(new_added_tasks)
-                    
-                    with open(file_path, "w", encoding="utf-8") as f:
-                        json.dump(final_tasks, f, ensure_ascii=False, indent=2)
-                    return {"reply": explanation}
-            
-            elif isinstance(parsed, list):
-                # Fallback nếu AI trả về mảng trực tiếp thay vì wrapper (Chế độ 1)
-                updated_tasks = parsed
-                
-                # Map simple IDs of updated_tasks back to original IDs
-                for ut in updated_tasks:
-                    simple_id = str(ut.get("id"))
-                    if simple_id in id_map_to_orig:
-                        ut["id"] = id_map_to_orig[simple_id]
-                        
-                updated_by_id = {t["id"]: t for t in updated_tasks if "id" in t}
-                visible_ids = {t["id"] for t in visible_tasks if "id" in t}
-                
-                final_tasks = []
-                new_added_tasks = []
-                
-                for ut in updated_tasks:
-                    ut_id = ut.get("id")
-                    if not ut_id or ut_id not in visible_ids:
-                        if not ut_id:
-                            ut["id"] = f"task_{now_ms}_{len(new_added_tasks)}"
-                        ut["status"] = "active"
-                        new_added_tasks.append(ut)
-                        
-                for t in all_tasks:
-                    t_id = t.get("id")
-                    if t_id in updated_by_id:
-                        final_tasks.append(updated_by_id[t_id])
-                    elif t_id in visible_ids:
-                        t["status"] = "hide"
-                        final_tasks.append(t)
-                    else:
-                        final_tasks.append(t)
-                        
-                final_tasks.extend(new_added_tasks)
-                
-                with open(file_path, "w", encoding="utf-8") as f:
-                    json.dump(final_tasks, f, ensure_ascii=False, indent=2)
-                return {"reply": explanation}
-            
-            else:
-                print(f"AI trả về kiểu dữ liệu không mong đợi: {type(parsed)}")
-                return {"reply": "Lỗi: AI trả về định dạng dữ liệu không hợp lệ. Vui lòng thử lại với yêu cầu rõ ràng hơn."}
+            return {"reply": "Tính năng Tổng hợp đã được bỏ. Vui lòng dùng '2. Nhập việc thủ công' để thêm công việc."}
         else:
             return {"reply": "Tính năng sửa Tab này đang được phát triển."}
             

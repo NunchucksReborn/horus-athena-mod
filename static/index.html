@@ -136,10 +136,8 @@
 
             <div class="divider"></div>
 
-            <button id="btn-tool-tonghop" class="btn tool-btn">1. Tổng hợp</button>
-            <button id="btn-restore-tasks" class="btn outline tool-btn" style="border-color: #555; color: #888; font-size: 0.8rem; height: 30px; margin-top: 5px;">⟲ Phục hồi xóa</button>
-            <button id="btn-tool-taoviec" class="btn tool-btn" style="margin-top: 15px;">2. Tạo việc</button>
-            <button id="btn-tool-nhapviec" class="btn tool-btn">3. Nhập việc</button>
+            <button id="btn-tool-manual" class="btn tool-btn">2. Nhập việc thủ công</button>
+            <button id="btn-tool-nhapviec" class="btn tool-btn" style="margin-top: 15px;">3. Nhập việc</button>
             <button id="btn-tool-suakpi" class="btn tool-btn outline" style="border-color: #f59e0b; color: #f59e0b;">4. Sửa KPI</button>
             
             <div class="divider"></div>
@@ -149,39 +147,18 @@
         <!-- Khu vực 2: Danh sách đầu việc -->
         <div class="area-workspace glass-panel">
             <div class="tabs">
-                <button class="tab-btn active" data-tab="tab-raw">Nội dung thô</button>
-                <button class="tab-btn" data-tab="tab-processed">Nội dung sau khi Tạo việc</button>
+                <button class="tab-btn active" data-tab="tab-processed">Nội dung đã tạo</button>
                 <button class="tab-btn" data-tab="tab-suakpi">Sửa KPI</button>
                 <button class="tab-btn" data-tab="tab-preview">Xem & Sửa việc đã nhập</button>
             </div>
             
-            <div class="tab-content active" id="tab-raw">
-                <div style="display: flex; justify-content: flex-end; gap: 10px; margin-bottom: 10px;">
-                    <button id="btn-force-sync" class="btn outline" style="width: auto; padding: 6px 12px; font-size: 0.85rem; border-color: var(--warning); color: var(--warning);">⚡ Quét lại từ đầu ngày</button>
-                    <button id="btn-refresh-raw" class="btn outline" style="width: auto; padding: 6px 12px; font-size: 0.85rem;">⟲ Làm mới nội dung</button>
-                </div>
-                <!-- Platform Filters for Tab 1 -->
-                <div class="filter-bar" id="raw-filter-bar"></div>
-                <div class="task-list-header">
-                    <span>Trạng thái</span>
-                    <span>Nội dung Chat (Thô)</span>
-                    <span>Dự án WorkAI</span>
-                </div>
-                <div id="raw-tasks-container">
-                    <!-- JS render tasks here -->
-                    <div class="empty-state">Chưa có dữ liệu. Hãy bấm "1. Tổng hợp".</div>
-                </div>
-            </div>
-
-            <div class="tab-content" id="tab-processed">
+            <div class="tab-content active" id="tab-processed">
                 <div style="display: flex; justify-content: flex-end; margin-bottom: 10px;">
                     <button id="btn-refresh-processed" class="btn outline" style="width: auto; padding: 6px 12px; font-size: 0.85rem;">⟲ Làm mới nội dung</button>
                 </div>
-                <!-- Platform Filters for Tab 2 -->
-                <div class="filter-bar" id="processed-filter-bar"></div>
                 <div id="processed-tasks-container">
                     <!-- JS render memorytask.md content here -->
-                    <div class="empty-state">Chưa có dữ liệu. Hãy bấm "2. Tạo việc".</div>
+                    <div class="empty-state">Chưa có dữ liệu. Hãy bấm "2. Nhập việc thủ công" để thêm công việc.</div>
                 </div>
             </div>
 
@@ -240,6 +217,30 @@
             </div>
             
             <button id="btn-cancel-nhapviec" class="btn outline" style="width: auto; padding: 8px 24px; border-color: var(--danger); color: var(--danger); margin: 0 auto; display: block; font-size: 0.9rem; transition: all 0.2s ease;">Hủy tiến trình</button>
+        </div>
+    </div>
+
+    <!-- MODAL NHAP VIEU THU CONG -->
+    <div id="manual-task-modal" class="modal-overlay hidden">
+        <div class="modal-content glass-panel" style="max-width: 800px; width: 90%; max-height: 90vh; overflow-y: auto;">
+            <div class="modal-header">
+                <h3>Nhập việc thủ công</h3>
+                <span class="close-modal" id="btn-close-manual-modal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <p style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 15px;">
+                    Mô tả ngắn gọn công việc bạn đã làm. AI sẽ tự động tạo tiêu đề chuẩn theo quy tắc
+                    <strong>[Hành động] - [Mục tiêu]</strong> (tối thiểu 50 ký tự).
+                </p>
+                <div id="manual-tasks-list" style="display: flex; flex-direction: column; gap: 15px;">
+                    <!-- JS render task rows here -->
+                </div>
+                <button id="btn-add-manual-task" class="btn outline" style="width: auto; padding: 8px 16px; margin-top: 15px;">+ Thêm việc</button>
+            </div>
+            <div class="modal-footer" style="margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px;">
+                <button id="btn-cancel-manual" class="btn outline" style="width: auto; padding: 8px 16px;">Hủy</button>
+                <button id="btn-create-manual-tasks" class="btn primary" style="width: auto; padding: 8px 16px;">Tạo việc</button>
+            </div>
         </div>
     </div>
 

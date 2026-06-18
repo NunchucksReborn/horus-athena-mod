@@ -36,56 +36,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderFilterBars() {
-        const rawBar = document.getElementById('raw-filter-bar');
-        const processedBar = document.getElementById('processed-filter-bar');
-        
-        if (!rawBar || !processedBar) return;
-        
-        const labels = {
-            'all': 'Tất cả',
-            'rocket': 'Rocket.Chat',
-            'git': 'Git (Local)',
-            'gitlab': 'GitLab (API)',
-            'calendar': 'WorkAI Lịch họp',
-            'email': 'Email (IMAP)',
-            'slack': 'Slack',
-            'telegram': 'Telegram'
-        };
-        
-        const renderBar = (bar, currentFilter, setFilterFn, onFilterChange) => {
-            bar.innerHTML = '';
-            
-            const allBtn = document.createElement('button');
-            allBtn.className = `filter-capsule ${currentFilter === 'all' ? 'active' : ''}`;
-            allBtn.textContent = 'Tất cả';
-            allBtn.addEventListener('click', () => {
-                setFilterFn('all');
-                onFilterChange();
-            });
-            bar.appendChild(allBtn);
-            
-            activePlatforms.forEach(p => {
-                if (p === 'all') return;
-                const btn = document.createElement('button');
-                btn.className = `filter-capsule ${currentFilter === p ? 'active' : ''}`;
-                btn.textContent = labels[p] || p;
-                btn.addEventListener('click', () => {
-                    setFilterFn(p);
-                    onFilterChange();
-                });
-                bar.appendChild(btn);
-            });
-        };
-        
-        renderBar(rawBar, currentRawFilter, (val) => currentRawFilter = val, () => {
-            renderFilterBars();
-            renderRawTasks();
-        });
-        
-        renderBar(processedBar, currentProcessedFilter, (val) => currentProcessedFilter = val, () => {
-            renderFilterBars();
-            renderProcessedTasks();
-        });
+        // Filter bars removed - manual entry has no platform filtering
     }
 
     function parseProcessedTasks(markdown) {
@@ -105,7 +56,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 currentTask = {
                     project: '',
-                    platform: 'rocket',
+                    platform: 'manual',
+                    date: '',
                     title: '',
                     rawLines: [line]
                 };
@@ -115,6 +67,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     currentTask.project = line.split(':', 2)[1].trim();
                 } else if (line.startsWith('- **Platform**:')) {
                     currentTask.platform = line.split(':', 2)[1].trim().toLowerCase();
+                } else if (line.startsWith('- **Date**:')) {
+                    currentTask.date = line.split(':', 2)[1].trim();
                 } else if (line.startsWith('- **Title**:')) {
                     currentTask.title = line.split(':', 2)[1].trim();
                 }
@@ -131,24 +85,19 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!container) return;
         
         if (!processedTasksContent || processedTasksContent.includes('Chưa có dữ liệu')) {
-            container.innerHTML = `<div class="empty-state">Chưa có dữ liệu. Hãy bấm "2. Tạo việc".</div>`;
+            container.innerHTML = `<div class="empty-state">Chưa có dữ liệu. Hãy bấm "2. Nhập việc thủ công" để thêm công việc.</div>`;
             return;
         }
         
         const { dateHeader, tasks } = parseProcessedTasks(processedTasksContent);
         
-        const filteredTasks = tasks.filter(t => {
-            if (currentProcessedFilter === 'all') return true;
-            return t.platform === currentProcessedFilter;
-        });
-        
-        if (filteredTasks.length === 0) {
-            container.innerHTML = `<div class="empty-state">Không có công việc nào thuộc nền tảng này hôm nay.</div>`;
+        if (tasks.length === 0) {
+            container.innerHTML = `<div class="empty-state">Không có công việc nào.</div>`;
             return;
         }
         
         let md = dateHeader + '\n\n';
-        filteredTasks.forEach((t, idx) => {
+        tasks.forEach((t, idx) => {
             md += `## Task ${idx + 1}\n`;
             t.rawLines.forEach(line => {
                 if (!line.startsWith('## Task')) {
@@ -1083,83 +1032,163 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    const btnTonghop = document.getElementById('btn-tool-tonghop');
-    btnTonghop.addEventListener('click', () => runTonghopFlow(false));
+    // --- Manual Task Modal Logic ---
+    const manualModal = document.getElementById('manual-task-modal');
+    const manualTasksList = document.getElementById('manual-tasks-list');
+    const btnAddManualTask = document.getElementById('btn-add-manual-task');
+    const btnCloseManualModal = document.getElementById('btn-close-manual-modal');
+    const btnCancelManual = document.getElementById('btn-cancel-manual');
+    const btnCreateManualTasks = document.getElementById('btn-create-manual-tasks');
+    const btnToolManual = document.getElementById('btn-tool-manual');
 
-    async function runTonghopFlow(force = false) {
-        btnTonghop.disabled = true;
-        btnTonghop.textContent = "Đang quét...";
-        document.getElementById('raw-tasks-container').innerHTML = `<div class="empty-state">Đang quét tin nhắn...</div>`;
-        try {
-            const url = force ? '/api/run/tonghop?force=true' : '/api/run/tonghop';
-            const res = await fetch(url, { method: 'POST' });
-            if(res.ok) {
-                const data = await res.json();
-                rawTasks = data.tasks;
-                renderRawTasks();
-                if (rawTasks.length === 0) {
-                    document.getElementById('raw-tasks-container').innerHTML = `
-                        <div class="empty-state">
-                            Không tìm thấy việc mới từ lần quét trước.
-                            <br><br>
-                            <a href="#" id="link-force-sync" style="color: var(--primary); text-decoration: underline;">[Quét lại toàn bộ tin nhắn từ đầu ngày hôm nay]</a>
-                        </div>
-                    `;
-                    const forceLink = document.getElementById('link-force-sync');
-                    if (forceLink) {
-                        forceLink.addEventListener('click', (e) => {
-                            e.preventDefault();
-                            runTonghopFlow(true);
-                        });
-                    }
-                }
-                // Chuyển sang tab raw
-                document.querySelector('[data-tab="tab-raw"]').click();
-            } else {
-                const err = await res.json();
-                document.getElementById('raw-tasks-container').innerHTML = `<div class="error-text">Lỗi: ${err.detail}</div>`;
-            }
-        } catch (e) {
-            document.getElementById('raw-tasks-container').innerHTML = `<div class="error-text">Lỗi kết nối.</div>`;
-        } finally {
-            btnTonghop.disabled = false;
-            btnTonghop.textContent = "1. Tổng hợp";
-        }
+    function todayISODate() {
+        const d = new Date();
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        return `${yyyy}-${mm}-${dd}`;
     }
 
-    document.getElementById('btn-restore-tasks').addEventListener('click', async () => {
-        try {
-            const res = await fetch('/api/raw_tasks/restore', { method: 'POST' });
-            if(res.ok) {
-                const data = await res.json();
-                rawTasks = data.tasks;
-                renderRawTasks();
-                alert("Đã phục hồi tất cả các việc bị xóa!");
-            }
-        } catch (e) {
-            alert("Lỗi kết nối khi phục hồi.");
-        }
-    });
+    function createManualTaskRow() {
+        const div = document.createElement('div');
+        div.className = 'manual-task-row';
+        div.style.padding = '15px';
+        div.style.border = '1px solid var(--panel-border)';
+        div.style.borderRadius = '8px';
+        div.style.background = 'rgba(0,0,0,0.2)';
 
-    document.getElementById('btn-tool-taoviec').addEventListener('click', async () => {
-        document.getElementById('processed-tasks-container').innerHTML = `<div class="empty-state">AI đang xử lý công việc... Vui lòng chờ...</div>`;
-        try {
-            const res = await fetch('/api/run/taoviec', { method: 'POST' });
-            if(res.ok) {
-                const data = await res.json();
-                processedTasksContent = data.content; // Cập nhật biến dữ liệu để nút Nhập việc nhận biết
-                // Render markdown content
-                document.getElementById('processed-tasks-container').innerHTML = `<pre style="white-space: pre-wrap; font-family: 'Inter', sans-serif;">${data.content}</pre>`;
-                // Chuyển tab
-                document.querySelector('[data-tab="tab-processed"]').click();
-            } else {
-                const err = await res.json();
-                document.getElementById('processed-tasks-container').innerHTML = `<div class="error-text">Lỗi: ${err.detail}</div>`;
+        let options = `<option value="">-- Chọn dự án --</option>`;
+        projectsList.forEach(p => {
+            options += `<option value="${p.code}">${p.name}</option>`;
+        });
+
+        div.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <span class="manual-task-index" style="font-weight: 600; color: var(--primary);">Việc #1</span>
+                <button type="button" class="btn outline btn-remove-manual-row" style="width: auto; padding: 4px 10px; font-size: 0.8rem; border-color: var(--danger); color: var(--danger);">Xóa</button>
+            </div>
+            <div class="form-group" style="margin-bottom: 8px;">
+                <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 4px;">Mô tả công việc (AI sẽ tạo tiêu đề chuẩn)</label>
+                <textarea class="manual-task-content" rows="3" placeholder="VD: Họp với team design về nội dung update mùa hè, thống nhất nhân vật và sự kiện mới" style="width: 100%; resize: vertical;"></textarea>
+            </div>
+            <div style="display: flex; gap: 10px;">
+                <div class="form-group" style="flex: 1; margin-bottom: 0;">
+                    <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 4px;">Dự án WorkAI</label>
+                    <select class="manual-task-project" style="width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--panel-border); background: var(--input-bg); color: var(--text-primary);">${options}</select>
+                </div>
+                <div class="form-group" style="flex: 1; margin-bottom: 0;">
+                    <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 4px;">Ngày công việc</label>
+                    <input type="date" class="manual-task-date" value="${todayISODate()}" style="width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--panel-border); background: var(--input-bg); color: var(--text-primary);">
+                </div>
+            </div>
+        `;
+
+        div.querySelector('.btn-remove-manual-row').addEventListener('click', () => {
+            div.remove();
+            reindexManualRows();
+            // Nếu xóa hết, thêm lại 1 row mặc định
+            if (manualTasksList.children.length === 0) {
+                createManualTaskRow();
             }
-        } catch (e) {
-            document.getElementById('processed-tasks-container').innerHTML = `<div class="error-text">Lỗi kết nối.</div>`;
-        }
-    });
+        });
+
+        manualTasksList.appendChild(div);
+        reindexManualRows();
+    }
+
+    function reindexManualRows() {
+        const rows = manualTasksList.querySelectorAll('.manual-task-row');
+        rows.forEach((row, idx) => {
+            const label = row.querySelector('.manual-task-index');
+            if (label) label.textContent = `Việc #${idx + 1}`;
+        });
+    }
+
+    function showManualModal() {
+        manualTasksList.innerHTML = '';
+        createManualTaskRow();
+        manualModal.classList.remove('hidden');
+        manualModal.style.display = 'flex';
+    }
+
+    function hideManualModal() {
+        manualModal.classList.add('hidden');
+        manualModal.style.display = 'none';
+    }
+
+    if (btnToolManual) {
+        btnToolManual.addEventListener('click', () => {
+            // Ensure projects list is loaded
+            if (projectsList.length === 0) {
+                fetch('/api/projects').then(res => res.json()).then(data => {
+                    if (data.projects) projectsList = data.projects;
+                    showManualModal();
+                }).catch(() => showManualModal());
+            } else {
+                showManualModal();
+            }
+        });
+    }
+
+    if (btnAddManualTask) {
+        btnAddManualTask.addEventListener('click', () => {
+            createManualTaskRow();
+        });
+    }
+
+    if (btnCloseManualModal) btnCloseManualModal.addEventListener('click', hideManualModal);
+    if (btnCancelManual) btnCancelManual.addEventListener('click', hideManualModal);
+
+    if (btnCreateManualTasks) {
+        btnCreateManualTasks.addEventListener('click', async () => {
+            const rows = manualTasksList.querySelectorAll('.manual-task-row');
+            const tasks = [];
+            rows.forEach(row => {
+                const content = row.querySelector('.manual-task-content').value.trim();
+                const project = row.querySelector('.manual-task-project').value.trim();
+                const date = row.querySelector('.manual-task-date').value.trim();
+                if (content) {
+                    tasks.push({ content: content, project_code: project, date: date });
+                }
+            });
+
+            if (tasks.length === 0) {
+                alert("Vui lòng nhập mô tả cho ít nhất 1 công việc.");
+                return;
+            }
+
+            btnCreateManualTasks.disabled = true;
+            btnCreateManualTasks.textContent = "AI đang tạo tiêu đề...";
+
+            try {
+                const res = await fetch('/api/manual_tasks/create', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ tasks: tasks })
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    processedTasksContent = data.content;
+                    renderProcessedTasks();
+                    hideManualModal();
+                    // Chuyển sang tab processed
+                    tabs.forEach(t => t.classList.remove('active'));
+                    tabContents.forEach(c => c.classList.remove('active'));
+                    document.querySelector('[data-tab="tab-processed"]').classList.add('active');
+                    document.getElementById('tab-processed').classList.add('active');
+                    alert("Đã tạo " + tasks.length + " công việc thành công! Kiểm tra ở tab 'Nội dung đã tạo'.");
+                } else {
+                    const err = await res.json();
+                    alert("Lỗi: " + (err.detail || "Không thể tạo công việc."));
+                }
+            } catch (e) {
+                alert("Lỗi kết nối: " + e.message);
+            } finally {
+                btnCreateManualTasks.disabled = false;
+                btnCreateManualTasks.textContent = "Tạo việc";
+            }
+        });
+    }
 
     // Cancel button click event listener
     const btnCancelNhapviec = document.getElementById('btn-cancel-nhapviec');
@@ -1182,9 +1211,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     document.getElementById('btn-tool-nhapviec').addEventListener('click', async () => {
-        // Confirmation before proceeding
         if (!processedTasksContent || processedTasksContent.includes('Chưa có dữ liệu')) {
-            alert("Không có dữ liệu công việc đã tạo. Hãy bấm '2. Tạo việc' trước.");
+            alert("Không có dữ liệu công việc đã tạo. Hãy bấm '2. Nhập việc thủ công' trước.");
             return;
         }
 
@@ -1266,121 +1294,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    function renderRawTasks() {
-        const container = document.getElementById('raw-tasks-container');
-        if (!container) return;
-
-        if (rawTasks.length === 0) {
-            container.innerHTML = `<div class="empty-state">Không có việc mới hôm nay.</div>`;
-            return;
-        }
-
-        // Filter the tasks by platform
-        const filteredTasks = rawTasks.filter(task => {
-            if (currentRawFilter === 'all') return true;
-            
-            const roomName = task.room_name || '';
-            let platform = 'rocket';
-            if (roomName.startsWith('Git -')) {
-                platform = 'git';
-            } else if (roomName.startsWith('Email:')) {
-                platform = 'email';
-            }
-            return platform === currentRawFilter;
-        });
-
-        if (filteredTasks.length === 0) {
-            container.innerHTML = `<div class="empty-state">Không có công việc nào thuộc nền tảng này hôm nay.</div>`;
-            return;
-        }
-
-        container.innerHTML = '';
-        filteredTasks.forEach((task, index) => {
-            const div = document.createElement('div');
-            div.className = 'task-item';
-            div.dataset.index = index;
-            
-            let options = `<option value="">-- Chọn dự án --</option>`;
-            projectsList.forEach(p => {
-                const selected = (task.project_code && task.project_code === p.code) ? 'selected' : '';
-                options += `<option value="${p.code}" ${selected}>${p.name}</option>`;
-            });
-
-            div.innerHTML = `
-                <div class="task-item-header">
-                    <div>
-                        <span class="task-badge">Task #${index + 1}</span>
-                        <select class="task-project-select">${options}</select>
-                    </div>
-                    <div>
-                        <button class="btn outline btn-detail-task" style="width: auto; padding: 2px 8px; font-size: 0.8rem; height: 24px; margin-right: 5px;">Chi tiết</button>
-                        <button class="btn outline btn-delete-task" style="width: auto; border-color: var(--danger); color: var(--danger); padding: 2px 8px; font-size: 0.8rem; height: 24px;">Xóa</button>
-                    </div>
-                </div>
-                <div class="task-content">
-                    <strong>[${task.room_name}]</strong> ${task.sender}: ${task.text}
-                </div>
-            `;
-            
-            // Add detail logic
-            div.querySelector('.btn-detail-task').addEventListener('click', () => {
-                alert("ĐOẠN CHAT GỐC:\n\n" + (task.original_chat || "Không có dữ liệu gốc"));
-            });
-
-            // Add project change logic
-            div.querySelector('.task-project-select').addEventListener('change', async (e) => {
-                const projectCode = e.target.value;
-                task.project_code = projectCode;
-                try {
-                    await fetch('/api/raw_tasks/update_project', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ id: task.id, project_code: projectCode })
-                    });
-                } catch(e) {
-                    console.error("Lỗi khi cập nhật dự án:", e);
-                }
-            });
-
-            // Add delete logic
-            div.querySelector('.btn-delete-task').addEventListener('click', async () => {
-                if(task.id) {
-                    try {
-                        await fetch('/api/raw_tasks/hide', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ id: task.id })
-                        });
-                    } catch(e) {
-                        console.error("Lỗi khi ẩn task:", e);
-                    }
-                    
-                    const idxInRaw = rawTasks.findIndex(t => t.id === task.id);
-                    if (idxInRaw !== -1) {
-                        rawTasks.splice(idxInRaw, 1);
-                    }
-                    renderRawTasks();
-                }
-            });
-
-            container.appendChild(div);
-        });
-    }
-    
     // --- Data Loading Helpers ---
-    async function loadRawTasks() {
-        try {
-            const res = await fetch('/api/raw_tasks');
-            if(res.ok) {
-                const data = await res.json();
-                rawTasks = data.tasks;
-                renderRawTasks();
-            }
-        } catch(e) {
-            console.error("Lỗi khi tải danh sách task thô:", e);
-        }
-    }
-
     async function loadProcessedTasks() {
         try {
             const res = await fetch('/api/taoviec/content');
@@ -1408,28 +1322,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- Refresh Buttons Logic ---
-    const btnForceSync = document.getElementById('btn-force-sync');
-    if(btnForceSync) {
-        btnForceSync.addEventListener('click', () => {
-            if(confirm("Bạn có chắc chắn muốn xóa danh sách hiện tại và quét lại toàn bộ tin nhắn/commit từ đầu ngày hôm nay không?")) {
-                runTonghopFlow(true);
-            }
-        });
-    }
-
-    const btnRefreshRaw = document.getElementById('btn-refresh-raw');
     const btnRefreshProcessed = document.getElementById('btn-refresh-processed');
     const btnRefreshKpi = document.getElementById('btn-refresh-kpi');
-
-    if(btnRefreshRaw) {
-        btnRefreshRaw.addEventListener('click', async () => {
-            btnRefreshRaw.textContent = "Đang tải...";
-            btnRefreshRaw.disabled = true;
-            await loadRawTasks();
-            btnRefreshRaw.textContent = "⟲ Làm mới nội dung";
-            btnRefreshRaw.disabled = false;
-        });
-    }
 
     if(btnRefreshProcessed) {
         btnRefreshProcessed.addEventListener('click', async () => {
@@ -1529,11 +1423,6 @@ document.addEventListener('DOMContentLoaded', () => {
             // Auto-refresh Tab 2 if it's the active tab
             if (activeTab === 'tab-processed') {
                 await loadProcessedTasks();
-            }
-
-            // Auto-refresh Tab 1 if it's the active tab
-            if (activeTab === 'tab-raw') {
-                await loadRawTasks();
             }
 
         } catch (e) {

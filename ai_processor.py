@@ -424,3 +424,61 @@ Quy tắc chung:
     if result.endswith("```"):
         result = result[:-3]
     return result.strip()
+
+
+def generate_manual_tasks(manual_inputs, provider, api_key):
+    """
+    Takes a list of manual task inputs: [{"content": "...", "date": "YYYY-MM-DD", "project_code": "GRPG"}]
+    Uses AI to generate proper titles following Rule B and returns markdown content for memorytask.md.
+    """
+    from datetime import datetime
+    today_str = datetime.now().strftime("%Y-%m-%d")
+
+    base_prompt = f"""Bạn là trợ lý ảo PM (Project Manager).
+Nhiệm vụ của bạn là nhận danh sách các mô tả công việc thô do người dùng nhập tay và tạo tiêu đề công việc (Task Title) đạt chuẩn.
+
+Đảm bảo tuân thủ TUYỆT ĐỐI quy tắc Rule B về đặt tiêu đề:
+- **Công thức**: `[Làm gì / Hành động cụ thể] - [Để làm gì / Mục tiêu cụ thể]`
+- **Độ dài**: Tối thiểu 50 ký tự. Mở rộng phần hành động và mục tiêu nếu cần để đạt yêu cầu.
+- **Ngôn ngữ**: Tiếng Việt (cho phép thuật ngữ kỹ thuật tiếng Anh phổ biến).
+- **Ví dụ đúng**: "Khắc phục lỗi hiển thị ảnh sản phẩm IAP trên iOS - Đảm bảo thông tin gói IAP xuất hiện đầy đủ và chính xác trên App Store"
+
+LƯU Ý QUAN TRỌNG:
+- Chỉ tạo tiêu đề (Title) cho các task. KHÔNG tạo phần mô tả (Description).
+- Dựa trên nội dung mô tả thô của người dùng để viết tiêu đề chuẩn. Giữ nguyên ý nghĩa công việc, chỉ format lại cho đúng Rule B.
+- Nếu mô tả thô quá ngắn, hãy suy luận hợp lý nội dung công việc dựa trên ngữ cảnh để viết tiêu đề đủ dài và đủ ý.
+
+Định dạng đầu ra mong muốn của file memorytask.md phải chính xác như sau:
+
+# Daily Tasks — {today_str}
+
+## Task 1
+- **Project**: [Mã dự án tương ứng, ví dụ: GRPG]
+- **Platform**: manual
+- **Date**: [Ngày công việc YYYY-MM-DD]
+- **Title**: [Tiêu đề task - dài ít nhất 50 ký tự]
+
+## Task 2
+- **Project**: [Mã dự án tương ứng]
+- **Platform**: manual
+- **Date**: [Ngày công việc YYYY-MM-DD]
+- **Title**: [Tiêu đề task - dài ít nhất 50 ký tự]
+
+...
+
+TUYỆT ĐỐI không bao gồm trường Duration (Thời lượng).
+KHÔNG TRẢ LỜI GIAO TIẾP HOẶC GHI CHÚ GÌ KHÁC NGOÀI NỘI DUNG FORMAT TRÊN.
+"""
+    system_prompt = base_prompt
+
+    user_prompt = "Dưới đây là danh sách các công việc người dùng nhập tay cần tạo tiêu đề:\n\n"
+    for i, t in enumerate(manual_inputs):
+        user_prompt += f"Task #{i+1}:\n"
+        user_prompt += f"- Mã dự án: {t.get('project_code', 'Chưa rõ')}\n"
+        user_prompt += f"- Ngày công việc: {t.get('date', today_str)}\n"
+        user_prompt += f"- Mô tả thô: {t.get('content', '')}\n\n"
+
+    user_prompt += "\nHãy tạo nội dung file memorytask.md cho các task trên."
+
+    result = call_ai_provider(provider, api_key, system_prompt, user_prompt)
+    return result

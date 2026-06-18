@@ -1,5 +1,5 @@
 {
-  "version": "1.1.0",
-  "released_at": "2026-06-18",
-  "changelog": "Ban fork dau tien cua horus-athena-mod: Chuyen auto-update sang repo NunchucksReborn/horus-athena-mod. Them requirements.txt va run.bat de ho tro cai dat moi."
+  "version": "1.2.0",
+  "released_at": "2026-06-19",
+  "changelog": "v1.2.0: Bo tinh nang Tong hop (Rocket.Chat/Git/Email sync) va Tạo việc tu dong. Thay bang tinh nang '2. Nhập việc thủ công' - popup cho phep nhap cong viec tay, chon ngay rieng biet cho moi viec, AI tu tao tieu de chuan Rule B (>= 50 ky tu). Tab 'Nội dung đã tạo' hien thi ket qua."
 }
